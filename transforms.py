@@ -23,27 +23,61 @@ def get_ground_velocity(vx_global, vy_global, vz_global, latitude, longitude):
     return v_local
 
 
+def cross_product(u, v):
+    return (u[1]*v[2] - u[2]*v[1],
+            u[2]*v[0] - u[0]*v[2],
+            u[0]*v[1] - u[1]*v[0])
+
+
+def dot_product(u, v):
+    return u[0]*v[0] + u[1]*v[1] + u[2]*v[2]
+
+
+def magnitude(v):
+    return math.sqrt(dot_product(v, v))
+
+
+def angle_between_vectors(u, v):
+    """ Compute the angle between vector u and v """
+    dp = dot_product(u, v)
+    if dp == 0:
+        return 0
+    um = magnitude(u)
+    vm = magnitude(v)
+    return math.acos(dp / (um*vm)) * (180. / math.pi)
 
 
 def map_throttle_to_engine(base_throttle, x_throttle, y_throttle, roll):
-    engine1 = np.array([1.0, 0.0])
-    engine2 = np.array([-0.5, math.sqrt(3)/2])  
-    engine3 = np.array([-0.5, -math.sqrt(3)/2]) 
+    import math
+import numpy as np
+
+def map_throttle_to_engine(base_throttle, x_throttle, y_throttle, roll):
+    # 定义原始引擎方向向量（120度均匀分布）
+    orig_engine1 = np.array([1.0, 0.0])
+    orig_engine2 = np.array([-0.5, math.sqrt(3)/2])
+    orig_engine3 = np.array([-0.5, -math.sqrt(3)/2])
     
-    cos_roll = math.cos(roll)
-    sin_roll = math.sin(roll)
-    rotation_matrix = np.array([[cos_roll, -sin_roll],
-                                [sin_roll, cos_roll]])
+    # 将roll角度转换为弧度
+    roll_rad = np.radians(roll)
     
-    rotated_engine1 = np.dot(rotation_matrix, engine1)
-    rotated_engine2 = np.dot(rotation_matrix, engine2)
-    rotated_engine3 = np.dot(rotation_matrix, engine3)
+    # 构建旋转矩阵
+    rotation_matrix = np.array([
+        [np.cos(roll_rad), -np.sin(roll_rad)],
+        [np.sin(roll_rad),  np.cos(roll_rad)]
+    ])
     
+    # 应用旋转矩阵到每个引擎方向向量
+    norm_engine1 = rotation_matrix @ orig_engine1
+    norm_engine2 = rotation_matrix @ orig_engine2
+    norm_engine3 = rotation_matrix @ orig_engine3
+    
+    # 计算节流阀值
     x_y = np.array([x_throttle, y_throttle])
-    
-    return (base_throttle + np.dot(rotated_engine1, x_y),
-            base_throttle + np.dot(rotated_engine2, x_y),
-            base_throttle + np.dot(rotated_engine3, x_y))
+    return (
+        base_throttle + np.dot(norm_engine1, x_y),
+        base_throttle + np.dot(norm_engine2, x_y),
+        base_throttle + np.dot(norm_engine3, x_y)
+    )
 
 
 if __name__ == "__main__":

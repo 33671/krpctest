@@ -3,7 +3,7 @@ import krpc
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-from transforms import get_ground_velocity,map_throttle_to_engine
+from transforms import angle_between_vectors, cross_product, get_ground_velocity,map_throttle_to_engine
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d import Axes3D
 import math
@@ -17,10 +17,10 @@ def main():
     # ground is y-z plane, x is up
 
     # velocity y-z --> direction y-z plane --> 3 throttle delta
-    direction_y_pid = PidController(kp=7.5, ki=0.001, kd=1.5, setpoint=1.0)
-    direction_z_pid = PidController(kp=7.5, ki=0.001, kd=1.5, setpoint=1.0)
-    velocity_y_pid = PidController(kp=2.8, ki=0.001, kd=0.5, setpoint=0.0)
-    velocity_z_pid = PidController(kp=0.25, ki=0.001, kd=0.5, setpoint=0.0)
+    direction_y_pid = PidController(kp=.1, ki=0.001, kd=1.5, setpoint=0.0)
+    direction_z_pid = PidController(kp=.1, ki=0.001, kd=1.5, setpoint=0.0)
+    velocity_y_pid = PidController(kp=.1, ki=0.001, kd=1.5, setpoint=0.0)
+    velocity_z_pid = PidController(kp=0.1, ki=0.001, kd=1.5, setpoint=0.0)
     # height --> velocity
     height_pid = PidController(kp=0.015, ki=0.002, kd=0.08, setpoint=200.0)
     # velocity --> throttle
@@ -33,13 +33,13 @@ def main():
     last_time = 0
 
     # panel.add_button("Clear", conn.drawing.clear)
-    sleep_duration = 0.1
+    sleep_duration = 0.2
     ground_vel_ref_frame = conn.space_center.ReferenceFrame.create_hybrid(
         position=vessel.orbit.body.reference_frame, rotation=vessel.surface_reference_frame)
     ground_vel_ref_frame_flight = vessel.flight(ground_vel_ref_frame)
-    vessel.control.sas = True
+    # vessel.control.sas = True
 
-    # vessel_self_ref_flight = vessel.flight(vessel.reference_frame)
+    vessel_self_ground_orient_flight = vessel.flight(vessel.orbit.body.orbital_reference_frame)
 
     while True:
         # conn.ui.clear()
@@ -48,19 +48,22 @@ def main():
         # panel.rect_transform.position = (10,10)
         # text = panel.add_text("Ground Velocity:")
         # 地速
-        vessel.control.sas_mode = conn.space_center.SASMode.radial
+        # vessel.control.sas_mode = conn.space_center.SASMode.radial
         # print("Ground Velocity:",  ["{0:0.2f}".format(i) for i in ground_vel_ref_frame_flight.velocity])
-        current_h_velocity = ground_vel_ref_frame_flight.velocity[0]
+        v = ground_vel_ref_frame_flight.velocity
+        current_h_velocity = v[0]
+        y_velocity = v[1]
+        z_velocity = v[2]
         print("currrent height velocity:", current_h_velocity)
         h = ground_vel_ref_frame_flight.surface_altitude
         print("height:{0:0.2f}".format(h))
         # get direction vector
         # d = ground_vel_ref_frame_flight.direction
         # print("Direction Vector:",["{0:0.2f}".format(i) for i in d])
-        y_velocity = ground_vel_ref_frame_flight.velocity[1]
-        z_velocity = ground_vel_ref_frame_flight.velocity[2]
-        y_direction = ground_vel_ref_frame_flight.direction[1]
-        z_direction = ground_vel_ref_frame_flight.direction[2]
+        d = ground_vel_ref_frame_flight.direction
+        y_direction = d[1]
+        z_direction = d[2]
+        print("Direction Y-Z:{0:0.2f}, {1:0.2f}".format(y_direction, z_direction))
         current_time = time.time()
         if last_time == 0:
             # Initialize last_time to avoid division by zero
@@ -85,17 +88,23 @@ def main():
         print(
             "Throttle Delta Y-Z:{0:0.2f}, {1:0.2f}".format(throttle_delta_y, throttle_delta_z))
         base_throttle = velocity_h_pid.clamp_compute(
-            current_h_velocity, dt=duration, min_output=-0.5, max_output=0.5) + 0.48
+            current_h_velocity, dt=duration, min_output=-0.5, max_output=0.5) + 0.5 
         last_time = current_time
         print("Base Throttle:", base_throttle)
 
+
+        roll = vessel_self_ground_orient_flight.roll
+        print("Roll:", roll)
+        (engine1_throttle, engine2_throttle, engine3_throttle) = map_throttle_to_engine(base_throttle, throttle_delta_y, throttle_delta_z, roll)
         for engine in vessel.parts.engines:
             engine.independent_throttle = True
-        roll = ground_vel_ref_frame_flight.roll
-        (engine1_throttle, engine2_throttle, engine3_throttle) = map_throttle_to_engine(base_throttle, throttle_delta_y, throttle_delta_z, roll)
+
+        print("Engine Throttles: {0:0.1f}, {1:0.1f}, {2:0.1f}".format(
+            engine1_throttle, engine2_throttle, engine3_throttle))
         vessel.parts.engines[0].throttle = engine1_throttle
         vessel.parts.engines[1].throttle = engine2_throttle
         vessel.parts.engines[2].throttle = engine3_throttle
+        # vessel.control.throttle = base_throttle
 
         conn.drawing.clear()
         # up
